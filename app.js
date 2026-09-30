@@ -37,9 +37,33 @@ function baseName(name) {
   return name.replace(/^.*[\\/]/, "");
 }
 
-function jsonKeys(mediaName) {
-  const n = baseName(mediaName);
-  return [n + ".json", n.replace(/\.[^.]+$/, "") + ".json", n + ".supplemental-metadata.json"];
+// Takeout names sidecars inconsistently: "(1)" copies put the counter after the
+// extension, "-edited" copies share the original's sidecar, and long names get
+// "supplemental-metadata" truncated to any prefix.
+function sidecarFor(mediaName) {
+  let n = baseName(mediaName).toLowerCase();
+  let dup = "";
+  const m = n.match(/^(.*)(\(\d+\))(\.[^.]+)$/);
+  if (m) {
+    n = m[1] + m[3];
+    dup = m[2];
+  }
+  const names = [n];
+  if (!dup && /-edited\.[^.]+$/.test(n)) names.push(n.replace(/-edited(\.[^.]+)$/, "$1"));
+  for (const x of names) {
+    const stem = x.replace(/\.[^.]+$/, "");
+    for (const k of [x + dup + ".json", stem + dup + ".json", x + ".supplemental-metadata" + dup + ".json"]) {
+      if (jsons.has(k)) return jsons.get(k);
+    }
+    const supp = ".supplemental-metadata";
+    for (const [k, v] of jsons) {
+      if (!k.startsWith(x + ".s") || !k.endsWith(dup + ".json")) continue;
+      const mid = k.slice(x.length, k.length - dup.length - 5);
+      if (!dup && /\(\d+\)$/.test(mid)) continue;
+      if (supp.startsWith(mid)) return v;
+    }
+  }
+  return null;
 }
 
 function sidecarDate(obj) {
@@ -78,13 +102,7 @@ async function rebuild() {
   rows = [];
   for (const file of media) {
     const name = baseName(file.name);
-    let jsonDate = "";
-    for (const k of jsonKeys(name)) {
-      if (jsons.has(k.toLowerCase())) {
-        jsonDate = sidecarDate(jsons.get(k.toLowerCase()));
-        break;
-      }
-    }
+    const jsonDate = sidecarDate(sidecarFor(name));
     const exif = await exifDate(file);
     const has = Boolean(jsonDate || exif);
     rows.push({ file, name, jsonDate, exif, has });
