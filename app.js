@@ -175,7 +175,11 @@ function toCsv() {
   const miss = rows.filter((r) => !r.has);
   const lines = ["file,exif,json"];
   for (const r of miss) {
-    const cells = [r.name, r.exif, r.jsonDate].map((v) => `"${String(v).replaceAll('"', '""')}"`);
+    const cells = [r.name, r.exif, r.jsonDate].map((v) => {
+      // A leading = + - @ would run as a formula when the CSV is opened in a spreadsheet.
+      const t = /^[=+\-@\t\r]/.test(String(v)) ? "'" + v : String(v);
+      return `"${t.replaceAll('"', '""')}"`;
+    });
     lines.push(cells.join(","));
   }
   return lines.join("\n") + "\n";
@@ -206,7 +210,14 @@ els.csv.addEventListener("click", () => {
 });
 els.zip.addEventListener("click", async () => {
   const zip = new JSZip();
-  for (const r of rows.filter((x) => !x.has)) zip.file(r.name, r.file);
+  const used = new Set();
+  for (const r of rows.filter((x) => !x.has)) {
+    // Takeout splits albums into folders, so the same name can show up twice.
+    let name = r.name;
+    for (let i = 2; used.has(name.toLowerCase()); i++) name = r.name.replace(/(\.[^.]+)?$/, ` (${i})$1`);
+    used.add(name.toLowerCase());
+    zip.file(name, r.file);
+  }
   const blob = await zip.generateAsync({ type: "blob" });
   download("dategap-missing.zip", blob);
 });
