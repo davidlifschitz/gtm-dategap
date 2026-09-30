@@ -134,7 +134,7 @@ function render() {
       )
       .join("");
     els.table.innerHTML = `<table>
-      <thead><tr><th>file</th><th>exif</th><th>json</th><th></th></tr></thead>
+      <thead><tr><th scope="col">file</th><th scope="col">exif</th><th scope="col">json</th><th scope="col">status</th></tr></thead>
       <tbody>${body}</tbody>
     </table>`;
   }
@@ -144,30 +144,34 @@ function render() {
 
 async function addFiles(list) {
   setError("");
+  const skipped = [];
+  let overCap = 0;
   for (const file of list) {
+    const n = baseName(file.name);
     if (file.size > MAX_BYTES) {
-      setError(`${file.name} is over 15 MB.`);
+      skipped.push(`${n} (over 15 MB)`);
       continue;
     }
-    const n = baseName(file.name);
     if (/\.json$/i.test(n)) {
       try {
         jsons.set(n.toLowerCase(), JSON.parse(await file.text()));
       } catch {
-        setError(`${n} is not JSON.`);
+        skipped.push(`${n} (not valid JSON)`);
       }
       continue;
     }
     if (!MEDIA.test(n)) {
-      setError(`${n} is not a photo, video, or sidecar I know.`);
+      skipped.push(`${n} (not a photo, video, or sidecar)`);
       continue;
     }
     if (media.length >= MAX_FILES) {
-      setError(`Cap is ${MAX_FILES} media files.`);
+      overCap++;
       continue;
     }
     media.push(file);
   }
+  if (overCap) skipped.push(`${overCap} more media file${overCap === 1 ? "" : "s"} over the ${MAX_FILES}-file cap`);
+  if (skipped.length) setError(`Skipped: ${skipped.join("; ")}.`);
   await rebuild();
 }
 
